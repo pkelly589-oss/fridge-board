@@ -1,0 +1,85 @@
+rules_version = '2';
+
+// Fridge Board security rules.
+//
+// Who can get in is decided by the `allowlist` collection: one document per
+// Google account, keyed by lowercase email, with role "owner" or "member".
+// The list lives in the database, not in this file, so no email addresses
+// ever appear in the public repository (requirement NF-10).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email_verified == true;
+    }
+
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function allowPath() {
+      return /databases/$(database)/documents/allowlist/$(myEmail());
+    }
+
+    function isMember() {
+      return signedIn() && exists(allowPath());
+    }
+
+    function isOwner() {
+      return signedIn() && exists(allowPath()) && get(allowPath()).data.role == 'owner';
+    }
+
+    function optString(d, key, maxLen) {
+      return !(key in d) || d[key] == null || (d[key] is string && d[key].size() <= maxLen);
+    }
+
+    function optTimestamp(d, key) {
+      return !(key in d) || d[key] == null || d[key] is timestamp;
+    }
+
+    function validItem(d) {
+      return d.keys().hasAll(['list', 'name', 'added_at'])
+        && d.keys().hasOnly(['list', 'name', 'qty', 'use_by', 'note', 'added_at',
+                             'added_by', 'done_at', 'done_by', 'archived_at'])
+        && d.list in ['fridge', 'meals', 'freezer']
+        && d.name is string && d.name.size() >= 1 && d.name.size() <= 120
+        && d.added_at is timestamp
+        && optString(d, 'qty', 40)
+        && optString(d, 'note', 500)
+        && optString(d, 'added_by', 254)
+        && optString(d, 'done_by', 254)
+        && (!('use_by' in d) || d.use_by == null
+            || (d.use_by is string && d.use_by.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')))
+        && optTimestamp(d, 'done_at')
+        && optTimestamp(d, 'archived_at');
+    }
+
+    // Household allowlist. Members can read only their own entry (so the app
+    // can tell whether they are allowed in); the owner can read and change all.
+    match /allowlist/{addr} {
+      allow get: if isOwner() || (signedIn() && addr == myEmail());
+      allow list: if isOwner();
+
+      allow create, update: if isOwner()
+        && addr == addr.lower()
+        && request.resource.data.keys().hasOnly(['role', 'added_at'])
+        && request.resource.data.role in ['owner', 'member']
+        // The owner can't demote themselves and lock everyone out.
+        && !(addr == myEmail() && request.resource.data.role != 'owner');
+
+      allow delete: if isOwner() && addr != myEmail();
+    }
+
+    // Fridge, meals (and later freezer) items. Any household member can
+    // read and change them.
+    match /items/{itemId} {
+      allow read: if isMember();
+      allow create: if isMember() && validItem(request.resource.data);
+      allow update: if isMember() && validItem(request.resource.data);
+      allow delete: if isMember();
+    }
+  }
+}

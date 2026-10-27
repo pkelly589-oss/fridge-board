@@ -1,0 +1,79 @@
+<!doctype html>
+<!-- Fridge Board phone/computer page. The views below are shown and hidden by
+     app.js: loading, sign-in, "not on the list", and the main tabbed view.
+     The <dialog> at the bottom is the item editor. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Fridge Board</title>
+  <meta name="description" content="What's in the fridge and what we could make.">
+  <meta name="theme-color" content="#f6f3ec" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1b1a17" media="(prefers-color-scheme: dark)">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Fridge">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="3" width="18" height="26" rx="4"/><path d="M7 12h18M11 7v2M11 16v5"/></svg>
+        <span>Fridge Board</span>
+      </div>
+      <button class="who" id="who" hidden aria-haspopup="true"></button>
+    </header>
+
+    <div class="banner" id="offline" hidden>Offline. Changes will sync when you reconnect.</div>
+
+    <main id="view-loading" class="center">
+      <p class="muted">Loading…</p>
+    </main>
+
+    <main id="view-signin" class="center" hidden>
+      <h1>What's in the fridge?</h1>
+      <p class="muted">Sign in with the Google account on your household's list.</p>
+      <button class="primary big" id="signin">Sign in with Google</button>
+      <p class="error" id="signin-error" hidden></p>
+    </main>
+
+    <main id="view-denied" class="center" hidden>
+      <h1>Not on the list yet</h1>
+      <p class="muted">You're signed in as <strong id="denied-email"></strong>, which isn't on this household's list. Ask the owner to add you, then reload.</p>
+      <button class="ghost" id="denied-signout">Sign out</button>
+    </main>
+
+    <main id="view-main" hidden>
+      <nav class="tabs" role="tablist" id="tabs"></nav>
+      <section id="panel"></section>
+    </main>
+  </div>
+
+  <dialog id="edit" aria-labelledby="edit-title">
+    <form method="dialog" id="edit-form">
+      <h2 id="edit-title">Edit item</h2>
+      <label class="field"><span>Name</span><input name="name" required maxlength="120" autocomplete="off"></label>
+      <div class="row2" data-only="tracksAge">
+        <label class="field"><span>Quantity</span><input name="qty" maxlength="40" placeholder="e.g. 2, half" autocomplete="off"></label>
+        <label class="field"><span>Use by</span><input name="use_by" type="date"></label>
+      </div>
+      <label class="field"><span>Note</span><input name="note" maxlength="500" placeholder="e.g. uses the spinach, or a recipe link" autocomplete="off"></label>
+      <label class="field"><span>Added on</span><input name="added_on" type="date" required></label>
+      <p class="muted small" id="edit-meta"></p>
+      <div class="actions">
+        <button type="button" class="danger" id="edit-delete">Delete</button>
+        <span class="spacer"></span>
+        <button type="button" class="ghost" id="edit-cancel">Cancel</button>
+        <button type="submit" class="primary" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
