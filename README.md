@@ -11,21 +11,29 @@ addresses: who can sign in is stored in the database, not in the code (see
 
 - **Sign in with Google.** Only accounts on the household list get in;
   anyone else sees "Not on the list yet".
-- **Fridge and Meals tabs**, each with a quick-add box at the top: type a
-  name and press Enter. The box stays ready for the next item.
-- **Fridge order:** oldest first, so forgotten food rises to the top. Items
-  added more than 7 days ago show a clock and their age (for example "9d").
-  Items with a use-by date within 2 days, or past it, are flagged in red.
-- **Meals order:** the order they were added. Meals can carry a note or a
-  recipe link.
+- **Fridge, Leftovers and Meals tabs.** Each tab shows how many items on it
+  aren't crossed off yet.
+- **Adding:** the "+ Add…" button at the top of each tab opens a popup to
+  enter the name and, optionally, quantity, use-by date, note and the
+  "Added on" date (today unless changed, to backdate food that was already
+  in the fridge).
+- **Fridge and Leftovers order:** oldest first, so forgotten food rises to the
+  top. Items with a use-by date within 2 days, or past it, are flagged in red.
+- **Age markers:** fridge items added more than 7 days ago show a clock and
+  their age (for example "9d"). Leftovers show it from day 3, and it turns red
+  from day 5, following the USDA guidance that cooked leftovers keep 3 to 4
+  days.
+- **Meals order:** the order they were added. Meals have no quantity, use-by
+  date or age marker, but can carry a note or a recipe link.
 - **Cross off** with the checkbox. Crossed-off items stay visible, struck
   through, for 24 hours; tap again to undo. After 24 hours they move to the
-  Archive tab automatically. Nothing is deleted unless you delete it.
-- **Edit** by tapping an item: name, quantity, use-by date, note, and the
-  "Added on" date (to backdate food that was already in the fridge).
-  Deleting needs two taps.
-- **Archive tab:** the 100 most recently archived items, each with Restore.
-- **People tab** (owner only): add or remove the Google accounts that can sign
+  Archive automatically. Nothing is deleted unless you delete it.
+- **Edit** by tapping an item: the same popup opens with its details filled
+  in, plus Delete (which needs two taps).
+- **Account menu:** tap your name at the top right for Archive, People and
+  Sign out.
+- **Archive:** the 100 most recently archived items, each with Restore.
+- **People** (owner only): add or remove the Google accounts that can sign
   in, including any shared device's account.
 - **Live updates:** a change on one phone shows on every other open page
   within seconds.
@@ -51,9 +59,9 @@ Firebase's free Spark plan.
 
 | Path | What it is |
 | --- | --- |
-| `public/index.html` | Page layout: sign-in, "not on the list", main view and the edit dialog |
-| `public/app.js` | Page behaviour: sign-in, live data, drawing the tabs, saving changes |
-| `public/items.js` | List rules: sort order, 24-hour hide, age and use-by flags. Kept free of Firebase code so it's easy to test and other pages can reuse it |
+| `public/index.html` | Page layout: sign-in, "not on the list", main view, account menu and the add/edit popup |
+| `public/app.js` | Page behaviour: sign-in, live data, drawing the tabs, the add/edit popup, saving changes |
+| `public/items.js` | List rules: which lists exist and in what order, sort order, 24-hour hide, age and use-by flags. Kept free of Firebase code so it's easy to test and other pages can reuse it |
 | `public/style.css` | Styles, mobile-first, light and dark |
 | `public/firebase-config.js` | The project's public Firebase web settings, and the stand-in settings used with the local emulators |
 | `public/manifest.webmanifest`, `public/icon*` | Home-screen app name and icons |
@@ -76,7 +84,7 @@ which list an item belongs to, so another list can be added without changing the
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `list` | string | `fridge` or `meals` (`freezer` is also accepted) |
+| `list` | string | `fridge`, `leftovers` or `meals` (`freezer` is also accepted) |
 | `name` | string | Required, up to 120 characters |
 | `qty` | string or null | Free-form, e.g. "2", "half" |
 | `use_by` | `YYYY-MM-DD` or null | Drives the red use-by flag |
@@ -91,8 +99,10 @@ The `allowlist` collection has one document per Google account. The document
 ID is the lowercase email address, and the `role` field is `owner` or
 `member`. Members can read only their own entry; the owner manages the rest.
 
-The 24-hour period, the 7-day age marker and the 2-day use-by warning are
-constants at the top of `public/items.js`.
+The 24-hour period and the 2-day use-by warning are constants at the top of
+`public/items.js`. Each list's age-marker thresholds are set in the `LISTS`
+table in the same file. To add a list, add an entry there and its id to the
+allowed values in `firestore.rules`.
 
 ## Setup
 
@@ -140,8 +150,8 @@ add people.
    lowercase. Add a field `role` (string) with the value `owner`. Save.
 3. In any browser, go to `https://<your-project-id>.web.app` (the Hosting
    URL that `npm run deploy` printed) and click **Sign in with Google**, using
-   the account you just added. Then use the **People** tab to add everyone
-   else.
+   the account you just added. Then open **People** from the menu under your
+   name to add everyone else.
 
 ### 4. Optional: App Check
 
@@ -173,15 +183,16 @@ later installed.
 ## Tests
 
 ```sh
-npm test                       # list rules + security rules (14 tests)
+npm test                       # list rules + security rules (15 tests)
 npx playwright install chromium  # once, for the browser test
 npm run test:e2e               # whole page in a phone-sized browser
 ```
 
 The browser test seeds a household, signs in through the emulator's fake
-Google sign-in, and checks sign-in refusal, ordering, flags, quick add,
-crossing off and undo, editing and backdating, delete, the Meals tab,
-archiving and restore, and managing people. It saves screenshots to
+Google sign-in, and checks sign-in refusal, ordering, flags, adding through
+the popup (with quantity, use-by and backdating), cancelling, crossing off and
+undo, editing, delete, the Leftovers age markers, the Meals tab, the account
+menu, archiving and restore, managing people, and signing out. It saves screenshots to
 `test-results/`.
 
 ## Security
@@ -197,7 +208,7 @@ archiving and restore, and managing people. It saves screenshots to
   Emails > Keep my email addresses private**, then run
   `git config user.email "<id>+<username>@users.noreply.github.com"` in this
   folder.
-- **Removing someone** in the People tab cuts off their access immediately.
+- **Removing someone** on the People page cuts off their access immediately.
 - On the free Spark plan, heavy misuse can only exhaust the free quota and
   pause the app until it resets; it can't run up a bill.
 

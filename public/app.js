@@ -3,8 +3,9 @@
 // What this file does:
 //   1. Connects to Firebase (or to the local emulators when run on localhost).
 //   2. Handles Google sign-in and checks the household allowlist.
-//   3. Listens live to the `items` collection and draws the Fridge and Meals
-//      lists, plus the Archive and (for the owner) Household tabs.
+//   3. Listens live to the `items` collection and draws the Fridge, Leftovers
+//      and Meals tabs, plus the Archive and (owner only) People pages, which
+//      open from the account menu.
 //   4. Writes changes: add, edit, cross off / undo, delete, restore.
 //   5. Archives items crossed off more than 24 hours ago whenever the page is
 //      open, so no scheduled server job is needed (requirement FR-24).
@@ -24,7 +25,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 import { FIREBASE_CONFIG, APPCHECK_SITE_KEY, EMULATOR_CONFIG } from './firebase-config.js';
 import {
-  LISTS, listInfo, visibleList, needsArchive, isDone, showAge, ageDays, isExpiring,
+  LISTS, listInfo, visibleList, needsArchive, isDone, showAge, isAgeWarning, ageDays, isExpiring,
   useByLabel, shortDate, toMillis, isoDay,
 } from './items.js';
 
@@ -75,9 +76,9 @@ const state = {
   email: '',           // lowercase email, used as the allowlist key
   role: null,          // 'owner' | 'member'
   items: [],           // every non-archived item, kept live by onSnapshot
-  tab: 'fridge',       // 'fridge' | 'meals' | 'archive' | 'household'
+  tab: 'fridge',       // a list id from items.js, or 'archive' | 'household'
   archive: [],         // recently archived items (Archive tab only)
-  household: [],       // allowlist entries (Household tab, owner only)
+  household: [],       // allowlist entries (People page, owner only)
   armed: null,         // id of a button waiting for a second tap to confirm
 };
 let stopItems = null, stopArchive = null, stopHousehold = null;
@@ -160,17 +161,25 @@ $('signin').addEventListener('click', async () => {
 
 const doSignOut = () => signOut(auth);
 $('denied-signout').addEventListener('click', doSignOut);
-$('who').addEventListener('click', () => {
-  // A deliberately simple account menu: one tap shows who you are, a second
-  // tap within 3 seconds signs out.
-  confirmTap('signout', $('who'), 'Tap again to sign out', doSignOut);
-});
+// Account menu: tapping your name opens Archive, People (owner only) and
+// Sign out. Tapping anywhere else, or pressing Escape, closes it.
+function setMenu(open) {
+  $('menu').hidden = !open;
+  $('who').setAttribute('aria-expanded', String(open));
+}
+$('who').addEventListener('click', (e) => { e.stopPropagation(); setMenu($('menu').hidden); });
+$('menu-archive').addEventListener('click', () => { setMenu(false); switchTab('archive'); });
+$('menu-people').addEventListener('click', () => { setMenu(false); switchTab('household'); });
+$('menu-signout').addEventListener('click', () => { setMenu(false); doSignOut(); });
+document.addEventListener('click', (e) => { if (!$('menu').contains(e.target)) setMenu(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
 
 onAuthStateChanged(auth, async (user) => {
   stopListening();
   $('panel').dataset.tab = '';
   state.user = user;
   state.role = null;
+  setMenu(false);
   if (!user) { $('who').hidden = true; show('view-signin'); return; }
 
   state.email = (user.email || '').toLowerCase();
@@ -189,6 +198,7 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
 
+  $('menu-people').hidden = state.role !== 'owner';
   show('view-main');
   startListening();
 });
@@ -233,14 +243,6 @@ addEventListener('offline', () => { if (state.role) $('offline').hidden = false;
 // ---------------------------------------------------------------------------
 // Writes
 // ---------------------------------------------------------------------------
-
-function addItem(listId, name) {
-  addDoc(itemsCol, {
-    list: listId, name, qty: null, use_by: null, note: null,
-    added_at: Timestamp.now(), added_by: state.email,
-    done_at: null, done_by: null, archived_at: null,
-  }).catch(fail);
-}
 
 // FR-20/FR-21: tap to cross off, tap again within the grace period to undo.
 function toggleDone(item) {
@@ -288,12 +290,14 @@ function render() {
   );
 }
 
+// One tab per list, each with a count of items not yet crossed off. Archive
+// and People are reached from the account menu instead, so the tabs fit
+// across a phone screen.
 function renderTabs() {
-  const tabs = [
-    ...LISTS.map((l) => ({ id: l.id, label: l.short, count: visibleList(state.items, l.id).filter((i) => !isDone(i)).length })),
-    { id: 'archive', label: 'Archive' },
-    ...(state.role === 'owner' ? [{ id: 'household', label: 'People' }] : []),
-  ];
+  const tabs = LISTS.map((l) => ({
+    id: l.id, label: l.short,
+    count: visibleList(state.items, l.id).filter((i) => !isDone(i)).length,
+  }));
   $('tabs').replaceChildren(...tabs.map((t) => h('button', {
     role: 'tab', class: 'tab', 'aria-selected': String(state.tab === t.id),
     onclick: () => switchTab(t.id),
@@ -302,7 +306,7 @@ function renderTabs() {
 
 function switchTab(id) {
   state.tab = id;
-  // The Archive and Household tabs subscribe only while they're open.
+  // The Archive and People pages subscribe only while they're open.
   stopArchive?.(); stopArchive = null;
   stopHousehold?.(); stopHousehold = null;
   if (id === 'archive') {
@@ -317,25 +321,13 @@ function switchTab(id) {
   render();
 }
 
-// One list (Fridge or Meals): title and quick-add box (ED-1).
+// One list: its title and an Add button (ED-1). The button opens the item
+// popup straight away, so dates and quantity can be set while adding.
 function listShell(listId) {
   const info = listInfo(listId);
-  const input = h('input', {
-    class: 'add-input', placeholder: info.placeholder, maxlength: '120',
-    autocomplete: 'off', enterkeyhint: 'done', 'aria-label': info.placeholder,
-  });
-  const form = h('form', {
-    class: 'add',
-    onsubmit: (e) => {
-      e.preventDefault();
-      const name = input.value.trim();
-      if (!name) return;
-      addItem(listId, name);
-      input.value = '';
-      input.focus(); // stay ready for the next item
-    },
-  }, input, h('button', { class: 'primary', type: 'submit', 'aria-label': 'Add' }, 'Add'));
-  return [h('h1', { class: 'list-title' }, info.title), form];
+  const add = h('button', { class: 'add-button', onclick: () => openAdd(listId) },
+    h('span', { class: 'plus', 'aria-hidden': 'true' }, '+'), info.placeholder);
+  return [h('h1', { class: 'list-title' }, info.title), add];
 }
 
 // The items of one list, in display order (items.js decides the order).
@@ -343,14 +335,18 @@ function listRows(listId) {
   const items = visibleList(state.items, listId);
   return items.length
     ? h('ul', { class: 'items' }, items.map((i) => itemRow(i)))
-    : h('p', { class: 'empty' }, listId === 'meals' ? 'No meal ideas yet.' : 'Nothing in the fridge yet.');
+    : h('p', { class: 'empty' }, listInfo(listId).empty);
 }
 
 function itemRow(item) {
   const done = isDone(item);
   const meta = [];
   if (item.qty) meta.push(h('span', {}, item.qty));
-  if (showAge(item)) meta.push(h('span', { class: 'age', title: `Added ${shortDate(toMillis(item.added_at))}` }, clockIcon(), `${ageDays(item)}d`));
+  if (showAge(item)) {
+    // Red once leftovers are past their safe window (see items.js).
+    meta.push(h('span', { class: `age${isAgeWarning(item) ? ' flag' : ''}`, title: `Added ${shortDate(toMillis(item.added_at))}` },
+      clockIcon(), `${ageDays(item)}d`));
+  }
   if (item.use_by && !done) meta.push(h('span', { class: isExpiring(item) ? 'flag' : '' }, useByLabel(item.use_by)));
   if (item.note) meta.push(h('span', { class: 'note' }, item.note));
 
@@ -391,7 +387,7 @@ function archiveRows() {
   return rows.length ? h('ul', { class: 'items' }, rows) : h('p', { class: 'empty' }, 'Nothing archived yet.');
 }
 
-// Household tab (owner only, labelled "People"): manage the allowlist
+// People page (owner only, from the account menu): manage the allowlist
 // (ED-3, NF-10).
 function householdShell() {
   const input = h('input', { type: 'email', placeholder: 'name@gmail.com', autocomplete: 'off', 'aria-label': 'Google account email', required: true });
@@ -407,7 +403,7 @@ function householdShell() {
   }, input, h('button', { class: 'primary', type: 'submit' }, 'Add'));
   return [
     h('h1', { class: 'list-title' }, 'Household'),
-    h('p', { class: 'muted small' }, 'Only these Google accounts can sign in. Add the fridge display\'s account here too.'),
+    h('p', { class: 'muted small' }, 'Only these Google accounts can sign in, including any shared device\'s account.'),
     form,
   ];
 }
@@ -434,30 +430,49 @@ function householdRows() {
 }
 
 // ---------------------------------------------------------------------------
-// Edit dialog (FR-2, FR-3, FR-11, FR-12, backdating via "Added on")
+// Item popup, used both to add a new item and to edit an existing one
+// (FR-2, FR-3, FR-11, FR-12, backdating via "Added on").
 // ---------------------------------------------------------------------------
 
-let editing = null;
+let editing = null;   // the item being edited, or { list } when adding
 const editForm = $('edit-form');
 
-function openEdit(item) {
+// Fill the popup's fields from an item and show it.
+function showItemDialog(item, adding) {
   editing = item;
   const f = editForm.elements;
   const info = listInfo(item.list);
-  $('edit-title').textContent = info.id === 'meals' ? 'Edit meal' : 'Edit item';
-  f.name.value = item.name;
+  const noun = info.id === 'meals' ? 'meal' : 'item';
+  $('edit-title').textContent = adding ? info.placeholder.replace('…', '') : `Edit ${noun}`;
+  $('edit-save').textContent = adding ? 'Add' : 'Save';
+  f.name.value = item.name || '';
   f.qty.value = item.qty || '';
   f.use_by.value = item.use_by || '';
   f.note.value = item.note || '';
   f.added_on.value = isoDay(toMillis(item.added_at) ?? Date.now());
   f.added_on.max = isoDay(Date.now());
-  // Quantity and use-by only apply to inventory lists.
+  // Quantity and use-by only apply to lists that track age (not meals).
   for (const el of editForm.querySelectorAll('[data-only="tracksAge"]')) el.hidden = !info.tracksAge;
   const by = item.added_by ? ` by ${item.added_by}` : '';
-  $('edit-meta').textContent = `Added ${shortDate(toMillis(item.added_at))}${by}.`;
+  $('edit-meta').textContent = adding ? '' : `Added ${shortDate(toMillis(item.added_at))}${by}.`;
+  $('edit-meta').hidden = adding;
+  $('edit-delete').hidden = adding;
   $('edit-delete').textContent = 'Delete';
   $('edit-delete').classList.remove('armed');
   $('edit').showModal();
+  if (adding) f.name.focus(); // ready to type the name straight away
+}
+
+const openAdd = (listId) => showItemDialog({ list: listId }, true);
+const openEdit = (item) => showItemDialog(item, false);
+
+// The chosen "Added on" date at a sensible time of day: the current time when
+// adding, or the item's original time when editing, so items added the same
+// day keep their relative order.
+function addedAtFromForm(baseMillis) {
+  const base = new Date(baseMillis);
+  const [y, m, d] = editForm.elements.added_on.value.split('-').map(Number);
+  return Timestamp.fromDate(new Date(y, m - 1, d, base.getHours(), base.getMinutes(), base.getSeconds()));
 }
 
 editForm.addEventListener('submit', () => {
@@ -465,18 +480,23 @@ editForm.addEventListener('submit', () => {
   const f = editForm.elements;
   const name = f.name.value.trim();
   if (!name) return;
-  // Keep the original time of day when only the date changes, so items added
-  // the same day keep their relative order.
-  const old = new Date(toMillis(editing.added_at) ?? Date.now());
-  const [y, m, d] = f.added_on.value.split('-').map(Number);
-  const added = new Date(y, m - 1, d, old.getHours(), old.getMinutes(), old.getSeconds());
-  updateDoc(doc(db, 'items', editing.id), {
+  const details = {
     name,
     qty: f.qty.value.trim() || null,
     use_by: f.use_by.value || null,
     note: f.note.value.trim() || null,
-    added_at: Timestamp.fromDate(added),
-  }).catch(fail);
+  };
+  if (editing.id) {
+    updateDoc(doc(db, 'items', editing.id), {
+      ...details, added_at: addedAtFromForm(toMillis(editing.added_at) ?? Date.now()),
+    }).catch(fail);
+  } else {
+    addDoc(itemsCol, {
+      list: editing.list, ...details,
+      added_at: addedAtFromForm(Date.now()), added_by: state.email,
+      done_at: null, done_by: null, archived_at: null,
+    }).catch(fail);
+  }
   editing = null;
 });
 

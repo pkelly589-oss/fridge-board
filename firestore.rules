@@ -44,7 +44,7 @@ service cloud.firestore {
       return d.keys().hasAll(['list', 'name', 'added_at'])
         && d.keys().hasOnly(['list', 'name', 'qty', 'use_by', 'note', 'added_at',
                              'added_by', 'done_at', 'done_by', 'archived_at'])
-        && d.list in ['fridge', 'meals', 'freezer']
+        && d.list in ['fridge', 'leftovers', 'meals', 'freezer']
         && d.name is string && d.name.size() >= 1 && d.name.size() <= 120
         && d.added_at is timestamp
         && optString(d, 'qty', 40)
@@ -73,8 +73,8 @@ service cloud.firestore {
       allow delete: if isOwner() && addr != myEmail();
     }
 
-    // Fridge, meals (and later freezer) items. Any household member can
-    // read and change them.
+    // Fridge, leftovers and meals items (freezer is also accepted). Any
+    // household member can read and change them.
     match /items/{itemId} {
       allow read: if isMember();
       allow create: if isMember() && validItem(request.resource.data);

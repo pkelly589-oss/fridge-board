@@ -68,7 +68,20 @@ h2 { font-size: 1.2rem; margin: 0 0 12px; }
   border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
   border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 0.875rem; min-height: 36px;
 }
-.who.armed { color: var(--flag); border-color: var(--flag); }
+
+/* Account menu: opens under your name with Archive, People and Sign out. */
+.account { position: relative; }
+.menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 10; min-width: 168px;
+  display: flex; flex-direction: column; padding: 6px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+}
+.menu button {
+  text-align: left; background: none; border: 0; color: var(--ink);
+  min-height: var(--tap); padding: 0 12px; border-radius: 8px;
+}
+.menu button:hover, .menu button:focus-visible { background: var(--bg); }
 
 .banner {
   background: var(--flag-soft); color: var(--flag); border-radius: var(--radius);
@@ -106,8 +119,18 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   background: color-mix(in srgb, currentColor 15%, transparent); border-radius: 999px; padding: 1px 7px;
 }
 
-/* ---- Quick-add box (ED-1) ---------------------------------------------- */
+/* ---- Add button (opens the item popup) and the People page's add box --- */
 .list-title { margin-top: 4px; }
+.add-button {
+  display: flex; align-items: center; gap: 10px; width: 100%; margin: 12px 0 16px;
+  min-height: 52px; padding: 0 16px; border-radius: var(--radius);
+  background: var(--surface); color: var(--ink-soft); font-size: 1rem; text-align: left;
+  border: 1px dashed var(--ink-soft);
+}
+.add-button .plus {
+  display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-ink); font-size: 1.2rem; line-height: 1; font-weight: 600;
+}
 .add { display: flex; gap: 8px; margin: 12px 0 16px; }
 .add input, .field input {
   flex: 1; min-width: 0; min-height: var(--tap); padding: 0 14px;
@@ -128,6 +151,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.85rem; color: var(--ink-soft); }
 .meta .note { overflow-wrap: anywhere; }
 .age { display: inline-flex; align-items: center; gap: 3px; font-weight: 650; color: var(--ink); }
+.age.flag { color: var(--flag); }
 .age svg { width: 14px; height: 14px; }
 .flag { color: var(--flag); font-weight: 650; }
 .chip { border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; }

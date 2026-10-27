@@ -81,6 +81,7 @@ test('invalid items are rejected', async () => {
   await assertFails(setDoc(doc(db, 'items', 'e'), item({ extra: true })));
   await assertFails(setDoc(doc(db, 'items', 'f'), item({ added_at: 'yesterday' })));
   await assertSucceeds(setDoc(doc(db, 'items', 'g'), item({ use_by: '2026-10-30' })));
+  await assertSucceeds(setDoc(doc(db, 'items', 'h'), item({ list: 'leftovers', name: 'Curry' })));
 });
 
 test('members can see only their own allowlist entry', async () => {

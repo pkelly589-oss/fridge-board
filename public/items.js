@@ -1,13 +1,24 @@
-// List rules shared by the phone page and (later) the fridge display.
+// List rules shared by the phone page and (later) the fridge display:
+// which lists exist, their order, the 24-hour hide, and the age and use-by flags.
 // Pure functions with no Firebase dependency, so they can be unit tested.
 
+// The lists, in tab order. For lists that track age:
+//   ageFlagDays: show the clock-and-age marker once an item is MORE than this
+//                many days old.
+//   ageWarnDays: also colour that marker red once it is MORE than this many
+//                days old (optional).
+// Leftovers use the USDA guidance that cooked leftovers keep 3 to 4 days in
+// the fridge: the age shows from day 3 and turns red from day 5.
 export const LISTS = [
-  { id: 'fridge', title: 'In the fridge', short: 'Fridge', placeholder: 'Add to the fridge…', tracksAge: true },
-  { id: 'meals', title: 'Meal ideas', short: 'Meals', placeholder: 'Add a meal idea…', tracksAge: false },
+  { id: 'fridge', title: 'In the fridge', short: 'Fridge', placeholder: 'Add to the fridge…',
+    empty: 'Nothing in the fridge yet.', tracksAge: true, ageFlagDays: 7 },
+  { id: 'leftovers', title: 'Leftovers', short: 'Leftovers', placeholder: 'Add leftovers…',
+    empty: 'No leftovers.', tracksAge: true, ageFlagDays: 2, ageWarnDays: 4 },
+  { id: 'meals', title: 'Meal ideas', short: 'Meals', placeholder: 'Add a meal idea…',
+    empty: 'No meal ideas yet.', tracksAge: false },
 ];
 
 export const GRACE_HOURS = 24;      // FR-22/FR-25: crossed-off items stay this long
-export const AGE_FLAG_DAYS = 7;     // FR-8: age marker after this many days
 export const EXPIRING_DAYS = 2;     // FR-4: flag use-by dates this close
 
 const HOUR = 36e5;
@@ -21,7 +32,8 @@ export function toMillis(t) {
   return null;
 }
 
-export const listInfo = (id) => LISTS.find((l) => l.id === id) || { id, title: id, tracksAge: true };
+export const listInfo = (id) => LISTS.find((l) => l.id === id)
+  || { id, title: id, short: id, empty: '', tracksAge: true, ageFlagDays: 7 };
 
 export function isDone(item) { return toMillis(item.done_at) != null; }
 
@@ -43,9 +55,17 @@ export function ageDays(item, now = Date.now()) {
   return added == null ? 0 : Math.floor((now - added) / DAY);
 }
 
-// FR-8: age marker on inventory items older than 7 days.
+// FR-8: age marker on items older than their list's ageFlagDays
+// (7 days for the fridge, 2 for leftovers). Meals never show it.
 export function showAge(item, now = Date.now()) {
-  return listInfo(item.list).tracksAge && !isDone(item) && ageDays(item, now) > AGE_FLAG_DAYS;
+  const info = listInfo(item.list);
+  return info.tracksAge && !isDone(item) && ageDays(item, now) > info.ageFlagDays;
+}
+
+// Leftovers past their safe window: the age marker is shown in red.
+export function isAgeWarning(item, now = Date.now()) {
+  const warn = listInfo(item.list).ageWarnDays;
+  return warn != null && showAge(item, now) && ageDays(item, now) > warn;
 }
 
 // Calendar days from today (local time) to a 'YYYY-MM-DD' date.

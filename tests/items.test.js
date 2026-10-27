@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  isVisible, needsArchive, showAge, isExpiring, sortItems, visibleList, useByLabel, daysUntil,
+  isVisible, needsArchive, showAge, isAgeWarning, isExpiring, sortItems, visibleList, useByLabel, daysUntil,
 } from '../public/items.js';
 
 const NOW = new Date(2026, 9, 27, 12, 0).getTime(); // Oct 27 2026, noon local
@@ -23,6 +23,15 @@ test('age marker after more than 7 days, inventory only', () => {
   assert.equal(showAge(it({ added_at: NOW - 8 * D }), NOW), true);
   assert.equal(showAge(it({ list: 'meals', added_at: NOW - 30 * D }), NOW), false);
   assert.equal(showAge(it({ added_at: NOW - 30 * D, done_at: NOW }), NOW), false);
+});
+
+test('leftovers show their age from day 3 and turn red from day 5', () => {
+  const left = (days) => it({ list: 'leftovers', added_at: NOW - days * D });
+  assert.equal(showAge(left(2), NOW), false);
+  assert.equal(showAge(left(3), NOW), true);
+  assert.equal(isAgeWarning(left(4), NOW), false);
+  assert.equal(isAgeWarning(left(5), NOW), true);
+  assert.equal(isAgeWarning(it({ added_at: NOW - 30 * D }), NOW), false); // fridge items never turn red
 });
 
 test('use-by flag within 2 days or past', () => {
