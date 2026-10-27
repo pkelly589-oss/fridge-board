@@ -1,25 +1,13 @@
 # Fridge Board
 
-A shared household list of what's in the fridge and what meals we could make.
-Everyone edits it from their phone; later it will also appear on an e-ink
-display mounted on the fridge, where items can be tapped off as they're used.
+A shared household list of what's in the fridge and what meals we could make,
+edited by everyone in the household from their phones and computers.
 
 This repository is **public**. It contains no secrets and no household email
 addresses: who can sign in is stored in the database, not in the code (see
 [Security](#security)).
 
-## Status
-
-| Milestone | State |
-| --- | --- |
-| 1. Firebase project and GitHub repository | To do: follow [Setup](#setup) |
-| 2. Phone edit page, data model, security rules, allowlist | **Done** |
-| 3. Fridge display page | Waiting on the hardware choice (Inkplate or Boox) |
-| 4. Cross-off and 24-hour expiry | Done on the phone page; the display follows in milestone 3 |
-| 5. Mount and test on the fridge | Later |
-| 6. Freezer list | Later (the data model already allows a `freezer` list) |
-
-### What the phone page does
+## Features
 
 - **Sign in with Google.** Only accounts on the household list get in;
   anyone else sees "Not on the list yet".
@@ -38,7 +26,7 @@ addresses: who can sign in is stored in the database, not in the code (see
   Deleting needs two taps.
 - **Archive tab:** the 100 most recently archived items, each with Restore.
 - **People tab** (owner only): add or remove the Google accounts that can sign
-  in. Add the fridge display's own Google account here too.
+  in, including any shared device's account.
 - **Live updates:** a change on one phone shows on every other open page
   within seconds.
 - **Offline:** the last lists stay visible and changes sync when the
@@ -49,9 +37,9 @@ addresses: who can sign in is stored in the database, not in the code (see
 ## How it works
 
 ```
-Phones ──┐                         ┌── Firebase Authentication (Google sign-in)
-         ├── Firebase Hosting ─────┤
-Fridge ──┘   (serves the pages)    └── Cloud Firestore (lists + allowlist)
+                                   ┌── Firebase Authentication (Google sign-in)
+Browsers ── Firebase Hosting ──────┤
+            (serves the pages)     └── Cloud Firestore (lists + allowlist)
 ```
 
 There is no server code. Firebase Hosting serves plain HTML, CSS and
@@ -65,13 +53,18 @@ Firebase's free Spark plan.
 | --- | --- |
 | `public/index.html` | Page layout: sign-in, "not on the list", main view and the edit dialog |
 | `public/app.js` | Page behaviour: sign-in, live data, drawing the tabs, saving changes |
-| `public/items.js` | List rules shared with the future fridge display: sort order, 24-hour hide, age and use-by flags. No Firebase code, so it's easy to test |
+| `public/items.js` | List rules: sort order, 24-hour hide, age and use-by flags. Kept free of Firebase code so it's easy to test and other pages can reuse it |
 | `public/style.css` | Styles, mobile-first, light and dark |
-| `public/firebase-config.js` | The project's public Firebase web settings (you fill this in) |
+| `public/firebase-config.js` | The project's public Firebase web settings, and the stand-in settings used with the local emulators |
 | `public/manifest.webmanifest`, `public/icon*` | Home-screen app name and icons |
 | `firestore.rules` | Security rules: allowlist check and item validation |
 | `firestore.indexes.json` | Database indexes (none needed yet) |
 | `firebase.json` | Hosting, rules and local emulator settings |
+| `.firebaserc` | Which Firebase project `npx firebase` commands act on |
+| `package.json` | Developer tools (Firebase command-line tools, test libraries) and the `npm run` commands |
+| `package-lock.json` | Exact versions of those tools, so every install gets the same ones |
+| `.gitignore` | Files Git leaves out: installed tools, Firebase's cache, logs, test screenshots |
+| `.gitattributes` | Keeps line endings consistent across computers (added by GitHub Desktop) |
 | `tests/items.test.js` | Unit tests for the list rules |
 | `tests/rules.test.js` | Security rules tests |
 | `tests/e2e.mjs` | Browser test of the whole page at phone size |
@@ -79,11 +72,11 @@ Firebase's free Spark plan.
 ### Data model
 
 One Firestore collection, `items`, holds every list. The `list` field says
-which list an item belongs to, so the freezer can be added without changes.
+which list an item belongs to, so another list can be added without changing the database.
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `list` | string | `fridge`, `meals` (later `freezer`) |
+| `list` | string | `fridge` or `meals` (`freezer` is also accepted) |
 | `name` | string | Required, up to 120 characters |
 | `qty` | string or null | Free-form, e.g. "2", "half" |
 | `use_by` | `YYYY-MM-DD` or null | Drives the red use-by flag |
@@ -148,7 +141,7 @@ add people.
 3. In any browser, go to `https://<your-project-id>.web.app` (the Hosting
    URL that `npm run deploy` printed) and click **Sign in with Google**, using
    the account you just added. Then use the **People** tab to add everyone
-   else, including a Google account for the fridge display.
+   else.
 
 ### 4. Optional: App Check
 
